@@ -1,5 +1,16 @@
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api";
 
+function parseApiError(data: unknown): string {
+  if (!data || typeof data !== "object") return "Request failed";
+  const err = data as { detail?: unknown; message?: string };
+  if (typeof err.detail === "string") return err.detail;
+  if (Array.isArray(err.detail)) {
+    return err.detail.map((e: { msg?: string }) => e.msg || "Validation error").join(", ");
+  }
+  if (typeof err.message === "string") return err.message;
+  return "Request failed";
+}
+
 class ApiClient {
   private token: string | null = null;
 
@@ -27,10 +38,24 @@ class ApiClient {
     const token = this.getToken();
     if (token) headers["Authorization"] = `Bearer ${token}`;
 
-    const res = await fetch(`${API_BASE}${path}`, { ...options, headers });
+    let res: Response;
+    try {
+      res = await fetch(`${API_BASE}${path}`, { ...options, headers });
+    } catch {
+      const isProduction =
+        typeof window !== "undefined" && !window.location.hostname.includes("localhost");
+      if (isProduction && API_BASE.includes("localhost")) {
+        throw new Error(
+          "Backend not configured. Set NEXT_PUBLIC_API_URL on Vercel and redeploy."
+        );
+      }
+      throw new Error(
+        "Cannot reach server. Wait 30 seconds (Render may be waking up) and try again."
+      );
+    }
     if (!res.ok) {
-      const err = await res.json().catch(() => ({ detail: "Request failed" }));
-      throw new Error(err.detail || "Request failed");
+      const err = await res.json().catch(() => ({}));
+      throw new Error(parseApiError(err));
     }
     if (res.status === 204) return {} as T;
     return res.json();

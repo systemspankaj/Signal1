@@ -29,8 +29,20 @@ AVATARS = [
 ]
 
 
-def seed():
-    Base.metadata.drop_all(bind=engine)
+def seed_if_empty():
+    """Seed demo data only when the database has no users (safe for production deploy)."""
+    db = SessionLocal()
+    try:
+        if db.query(User).count() > 0:
+            return
+    finally:
+        db.close()
+    seed(reset=False)
+
+
+def seed(reset: bool = True):
+    if reset:
+        Base.metadata.drop_all(bind=engine)
     Base.metadata.create_all(bind=engine)
     db = SessionLocal()
 
